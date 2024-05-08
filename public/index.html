@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <p id="welcome-message" style="text-align: center;"></p>
+    <!-- create Form Join -->
+    <form id="form-join">
+        <input type="text" id="name" placeholder="Type Your Name" required>
+        <input type="text" id="room" placeholder="Room" required>
+        <button id="btn-join-room" type="submit">Join</button>
+    </form>
+
+    <!-- add chat display to display user chat -->
+    <ul class="chat-display"></ul>
+
+    <!-- add list of user active -->
+    <p class="user-list"></p>
+
+    <!-- add room list -->
+    <p class="room-list"></p>
+
+    <!-- add user activity display -->
+    <p class="activity"></p>
+
+    <!-- add form to submit message chat user -->
+    <form id="message-form">
+        <input type="text" id="message" placeholder="message" required>
+        <button>Submit</button>
+    </form>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-2huaZvOR9iDzHqslqwpR87isEmrfxqyWOF7hr7BY6KG0+hVKLoEXMPUJw3ynWuhO" crossorigin="anonymous"></script>
+    <script>
+        const socket = new io('ws://localhost:3500')
+        
+        const msgInput = document.querySelector('#message')
+        const nameInput = document.querySelector('#name')
+        const roomInput = document.querySelector("#room")
+
+        const userActivity = document.querySelector('.activity')
+        const userList = document.querySelector('.user-list')
+        const roomList = document.querySelector('.room-list')
+        const chatDisplay = document.querySelector('.chat-display')
+    
+        document.querySelector('#form-join')
+            .addEventListener('submit', joinRoom)
+
+        function joinRoom(e) {
+            e.preventDefault()
+            if(nameInput.value && roomInput.value) {
+                // send event join-room to server with data object 
+                socket.emit('join-room', {
+                    name: nameInput.value,
+                    room: roomInput.value
+                });
+            }
+        }
+
+        // listen for event joined-room from server
+        socket.on('joined-room', message => {
+            showAnnouncement(message)
+        });
+
+        document.querySelector('#message-form')
+            .addEventListener('submit', sendMessage)
+
+        function sendMessage(e) {
+            e.preventDefault()
+            if (msgInput.value) {
+                // send data to server with event called message-client
+                socket.emit('message-client', {
+                    name: nameInput.value,
+                    message: msgInput.value
+                })
+                msgInput.value = ""
+            }
+            msgInput.focus()
+        }
+
+        // listen for event someone-joined-room from server
+        socket.on('someone-join-room', message => {
+            showAnnouncement(message)
+        });
+
+        // listen for event someone-joined-room from server
+        socket.on('someone-left-room', message => {
+            showAnnouncement(message)
+        });
+
+        // listen for welcome-message event from server
+        socket.on('welcome-message', message => {
+            document.querySelector('#welcome-message').textContent = message
+        })
+
+        function showAnnouncement(message) {
+            const li = document.createElement('li')
+            li.className = 'post'
+            li.innerHTML = `<div class="post__text">${message}</div>`
+            chatDisplay.appendChild(li)
+        }
+
+        // Listen for event message from server
+        socket.on("message", ( data ) => {
+            userActivity.textContent = ""
+            console.log(data);
+            const { name, message, time } = data
+            const li = document.createElement('li')
+            li.className = 'post'
+            if(name != nameInput.value) {
+                li.className = 'post post--left'
+            } 
+
+            if(name == nameInput.value) {
+                li.className = 'post post--right'
+            }
+
+            li.innerHTML = `<div class="post post__header ${name == nameInput.value 
+            ? 'post__header--user'
+            : 'post__header--reply'}"
+            >
+            <span class="post__header--name">${name}</span>
+            <span class="post__header--time">${time}</span>
+            </div>
+            <div class="post__text">${message}</div>
+            `
+            chatDisplay.appendChild(li)
+            chatDisplay.scrollTop = chatDisplay.scrollHeight
+        })
+
+
+        // send event activity-client to server, to indicate if user is typing right now
+        msgInput.addEventListener('keypress', () => {
+            socket.emit('activity-client', nameInput.value);
+        })
+
+        // listen for event activity from server
+        let activityTimer
+        socket.on('activity', (name) => {
+            userActivity.textContent = `${name} is typing...`;
+            
+            //clear after 3 seconds
+            clearTimeout(activityTimer);
+
+            // after 3 seconds clear activity content -> to detect user afk and not typing so we need to clear it
+            activityTimer = setTimeout(() => {
+                userActivity.textContent = ""
+            }, 1000);
+        });
+
+        // listen to userList event from server
+        socket.on('userList', ({ users }) => {
+            showUsers(users)
+        });
+
+        // listen to roomList event from server
+        socket.on('roomList', ({rooms}) => {
+            showRooms(rooms)
+        });
+      
+        function showUsers(users) {
+            userList.textContent = ""
+            if(users) {
+                userList.innerHTML = `<em>Users in room ${roomInput.value} : </em>`
+
+                users.forEach((user,i) => {
+                    userList.textContent += `${user.name}`
+
+                    if(users.length > 1 && i !== users.length - 1) {
+                        userList.textContent += ", "
+                    }
+                })
+            }
+        }
+
+        function showRooms(rooms) {
+            roomList.textContent = ""
+            if(rooms) {
+                roomList.innerHTML = `<em>Active Rooms : </em>`
+
+                rooms.forEach((room,i) => {
+                    roomList.textContent += `${room}`
+
+                    if(rooms.length > 1 && i !== rooms.length - 1) {
+                        roomList.textContent += ", "
+                    }
+                })
+            }
+        }
+      </script>
+</body>
+</html>
